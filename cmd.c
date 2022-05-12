@@ -51,19 +51,34 @@ char* execCommand(char* cmd, struct Preferences* preferences)
 	{
 		char* token = strsep(&cmd, " ");
 		
-		if (strcmp(token, "brushcolor") == 0)
+		if (strcmp(token, "color") == 0)
 		{
 			char* token = strsep(&cmd, " ");
 			if (token == NULL)
-				return "Usage: 'set' 'brushColor' [color]";
+				return "Usage: 'set' 'color' [color]";
 			else
 			{
-				if (!parseColor(token, &preferences->brush.color))
-					return "Usage: 'set' 'brushColor' [color]";
+				if (!parseColor(token, &preferences->color))
+					return "Usage: 'set' 'color' [color]";
+			}
+		}
+		else if (strcmp(token, "size") == 0)
+		{
+			char* token = strsep(&cmd, " ");
+			if (token == NULL)
+				return "Usage: 'set' 'size' [size]";
+			else
+			{
+				float size = atof(token);
+
+				if (size == 0.0)
+					return "Usage: 'set' 'size' [size: 0..1]";
+
+				preferences->radius = size;
 			}
 		}
 		else
-			return "Usage: 'set' brushColor | brushSize | bgColor";
+			return "Usage: 'set' color | size";
 
 		return NULL;
 	}

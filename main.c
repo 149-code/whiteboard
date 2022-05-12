@@ -48,7 +48,7 @@ struct Cursor getCursorInfo(GLFWwindow* window)
 	};
 }
 
-void cursorRender(struct Cursor cursor, struct BrushContext brushCtx)
+void cursorRender(struct Cursor cursor, float radius, vec4s color)
 {
 	vec2s mesh[1] = {{cursor.pos.x / SCREEN_WIDTH, 1 - (cursor.pos.y / SCREEN_HEIGHT)}};
 
@@ -60,8 +60,8 @@ void cursorRender(struct Cursor cursor, struct BrushContext brushCtx)
 
 	glUseProgram(shaderStore.circleShader);
 	glUniform1i(glGetUniformLocation(shaderStore.circleShader, "toTex"), false);
-	glUniform1f(glGetUniformLocation(shaderStore.circleShader, "radius"), brushCtx.radius);
-	glUniform4fv(glGetUniformLocation(shaderStore.circleShader, "color"), 1, &brushCtx.color.x);
+	glUniform1f(glGetUniformLocation(shaderStore.circleShader, "radius"), radius);
+	glUniform4fv(glGetUniformLocation(shaderStore.circleShader, "color"), 1, &color.x);
 
 	glDrawArrays(GL_POINTS, 0, 1);
 }
@@ -153,8 +153,8 @@ int main()
 	struct DrawHistory dh = dhInit();
 	struct Cursor oldCursor = getCursorInfo(window);
 	struct Preferences preferences = {
-		.brush = (struct BrushContext){.color = {1.0, 0.8, 0.8, 1}, .radius = 0.002},
-		.eraserRadius = 0.02,
+		.color = (vec4s) {1.0, 0.8, 0.8, 1},
+		.radius = 0.002,
 		.mode = DM_BRUSH,
 	};
 	char cmdBuffer[256] = {0};
@@ -202,25 +202,25 @@ int main()
 			if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS)
 			{
 				if (preferences.mode == DM_BRUSH)
-					preferences.brush.radius +=
-						0.2 * pow(preferences.brush.radius, 1.1);
+					preferences.radius +=
+						0.2 * pow(preferences.radius, 1.1);
 				else
-					preferences.eraserRadius +=
-						0.2 * pow(preferences.eraserRadius, 1.1);
+					preferences.radius +=
+						0.2 * pow(preferences.radius, 1.1);
 			}
 			if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS)
 			{
 				if (preferences.mode == DM_BRUSH)
 				{
-					if (preferences.brush.radius > 0.002)
-						preferences.brush.radius -=
-							0.2 * pow(preferences.brush.radius, 1.1);
+					if (preferences.radius > 0.002)
+						preferences.radius -=
+							0.2 * pow(preferences.radius, 1.1);
 				}
 				else
 				{
-					if (preferences.eraserRadius >= 0.01)
-						preferences.eraserRadius -=
-							0.2 * pow(preferences.eraserRadius, 1.1);
+					if (preferences.radius >= 0.01)
+						preferences.radius -=
+							0.2 * pow(preferences.radius, 1.1);
 				}
 			}
 
@@ -266,13 +266,13 @@ int main()
 				if (preferences.mode == DM_BRUSH)
 				{
 					currOp.op = OT_STROKE;
-					currOp.stroke_width = preferences.brush.radius;
-					currOp.color = preferences.brush.color;
+					currOp.stroke_width = preferences.radius;
+					currOp.color = preferences.color;
 				}
 				else if (preferences.mode == DM_ERASE)
 				{
 					currOp.op = OT_ERASER;
-					currOp.stroke_width = preferences.eraserRadius;
+					currOp.stroke_width = preferences.radius;
 				}
 
 				currOp.points = vtInit(vec2s, 0);
@@ -307,8 +307,8 @@ int main()
 		{
 			struct Operation op = {
 				.op = OT_STROKE,
-				.stroke_width = preferences.brush.radius,
-				.color = preferences.brush.color,
+				.stroke_width = preferences.radius,
+				.color = preferences.color,
 				.points = vtInit(vec2s, 0),
 			};
 
@@ -319,7 +319,7 @@ int main()
 		{
 			struct Operation op = {
 				.op = OT_HOLLOW_DOT,
-				.stroke_width = preferences.eraserRadius,
+				.stroke_width = preferences.radius,
 				.color = (vec4s){0, 0, 0, 1},
 				.points = vtInit(vec2s, 0),
 			};
