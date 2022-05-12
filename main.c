@@ -4,32 +4,35 @@
 #include <cglm/struct.h>
 #include <ct/glt.h>
 
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_IMPLEMENTATION
+#define NK_GLFW_GL3_IMPLEMENTATION
+#define NK_KEYSTATE_BASED_INPUT
+#include <nuklear/nuklear.h>
+#include <nuklear/nuklear_glfw_gl3.h>
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "cmd.h"
+#include "config.h"
 #include "context.h"
 #include "operation.h"
-#include "tablet.h"
+
+bool nkInput = false;
 
 struct Cursor
 {
 	vec2s pos;
 	bool down;
-};
-
-struct BrushContext
-{
-	float radius;
-	vec4s color;
-};
-
-struct Preferences
-{
-	struct BrushContext brush;
-	float eraserRadius;
-	bool isEraser;
 };
 
 struct Cursor getCursorInfo(GLFWwindow* window)
@@ -104,101 +107,193 @@ GLFWwindow* createWindowAndContext()
 	return window;
 }
 
+double deltaWidth(double y, int dx)
+{
+	double ret;
+
+	if (y >= 0)
+		ret = y + dx;
+	else
+		ret = y + log(y) * dx;
+
+	if (ret > 1)
+		return ret;
+	else
+		return 1;
+}
+
+enum DRAW_MODE
+{
+	DM_BRUSH,
+	DM_ERASE,
+	DM_CMD,
+};
+
+void mod_nk_glfw3_char_callback(GLFWwindow *win, unsigned int codepoint)
+{
+	if (nkInput)
+		nk_glfw3_char_callback(win, codepoint);
+}
+
 int main()
 {
-	init();
 	GLFWwindow* window = createWindowAndContext();
+	struct nk_context* ctx = nk_glfw3_init(window, NK_GLFW3_DEFAULT);
+	glfwSetCharCallback(window, mod_nk_glfw3_char_callback);
+
+	struct nk_font_atlas* fontStash;
+	nk_glfw3_font_stash_begin(&fontStash);
+	struct nk_font* font = nk_font_atlas_add_default(fontStash, 20, NULL);
+	nk_glfw3_font_stash_end();
+
+	nk_init_default(ctx, &font->handle);
+	ctx->style.window.padding.x = 0;
+	ctx->style.window.padding.y = 0;
 
 	struct DrawHistory dh = dhInit();
 	struct Cursor oldCursor = getCursorInfo(window);
 	struct Preferences preferences = {
-		.brush = (struct BrushContext){.color = {0.2, 0.8, 0.8, 1}, .radius = 0.002},
+		.brush = (struct BrushContext){.color = {1.0, 0.8, 0.8, 1}, .radius = 0.002},
 		.eraserRadius = 0.02,
-		.isEraser = false,
+		.mode = DM_BRUSH,
 	};
+	char cmdBuffer[256] = {0};
 	struct Operation currOp = {.op = OT_NULL};
 
 	bool u_hold = false;
 	bool c_hold = false;
-	bool e_hold = false;
 
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
-
-		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-			glfwSetWindowShouldClose(window, true);
-
-		if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS && !u_hold)
-		{
-			u_hold = true;
-			dhUndo(&dh);
-		}
-		if (glfwGetKey(window, GLFW_KEY_U) != GLFW_PRESS)
-			u_hold = false;
-
-		if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS && !c_hold)
-		{
-			c_hold = true;
-
-			struct Operation op = {.op = OT_CLEAR, .color = (vec4s){0, 0, 0, 0}};
-			dhAddOp(&dh, op);
-		}
-		if (glfwGetKey(window, GLFW_KEY_C) != GLFW_PRESS)
-			c_hold = false;
-
-		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS && !e_hold)
-		{
-			e_hold = true;
-			preferences.isEraser = !preferences.isEraser;
-		}
-		if (glfwGetKey(window, GLFW_KEY_E) != GLFW_PRESS)
-			e_hold = false;
-
-		if (vtLen(dh.operations) > 0)
-		{
-			if (dh.operations[vtLen(dh.operations) - 1].op == OT_STROKE &&
-				glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS)
-			{
-				dh.operations[vtLen(dh.operations) - 1] =
-					fixOperation(dh.operations[vtLen(dh.operations) - 1]);
-			}
-		}
-
 		struct Cursor newCursor = getCursorInfo(window);
 
-		if (newCursor.down == true && oldCursor.down == false)
+		if (preferences.mode == DM_CMD)
 		{
-			if (!preferences.isEraser)
+			if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 			{
-				currOp.op = OT_STROKE;
-				currOp.stroke_width = preferences.brush.radius;
-				currOp.color = preferences.brush.color;
-			}
-			else
-			{
-				currOp.op = OT_ERASER;
-				currOp.stroke_width = preferences.eraserRadius;
+				preferences.mode = DM_BRUSH;
+				nkInput = false;
 			}
 
-			currOp.points = vtInit(vec2s, 0);
-			vec2s newPoint = {newCursor.pos.x / SCREEN_WIDTH,
-				1 - (newCursor.pos.y / SCREEN_HEIGHT)};
-			vtPush(&currOp.points, newPoint);
-		}
-		if (newCursor.down == true && oldCursor.down == true)
-		{
-			vec2s newPoint = {newCursor.pos.x / SCREEN_WIDTH,
-				1 - (newCursor.pos.y / SCREEN_HEIGHT)};
-			vtPush(&currOp.points, newPoint);
-		}
-		if (newCursor.down == false && oldCursor.down == true)
-		{
-			dhAddOp(&dh, currOp);
-			currOp = (struct Operation){.op = OT_NULL};
-		}
+			if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
+			{
+				char* res = execCommand(cmdBuffer, &preferences);
 
-		oldCursor = newCursor;
+				if (res)
+					strcpy(cmdBuffer, res);
+				else
+					preferences.mode = DM_BRUSH;
+
+				nkInput = false;
+			}
+		}
+		else
+		{
+
+			if (glfwGetKey(window, GLFW_KEY_SEMICOLON) == GLFW_PRESS &&
+				glfwGetKey(window, GLFW_KEY_LEFT_SHIFT))
+			{
+				preferences.mode = DM_CMD;
+				nkInput = true;
+				cmdBuffer[0] = '\0';
+			}
+
+			if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS)
+			{
+				if (preferences.mode == DM_BRUSH)
+					preferences.brush.radius +=
+						0.2 * pow(preferences.brush.radius, 1.1);
+				else
+					preferences.eraserRadius +=
+						0.2 * pow(preferences.eraserRadius, 1.1);
+			}
+			if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS)
+			{
+				if (preferences.mode == DM_BRUSH)
+				{
+					if (preferences.brush.radius > 0.002)
+						preferences.brush.radius -=
+							0.2 * pow(preferences.brush.radius, 1.1);
+				}
+				else
+				{
+					if (preferences.eraserRadius >= 0.01)
+						preferences.eraserRadius -=
+							0.2 * pow(preferences.eraserRadius, 1.1);
+				}
+			}
+
+			if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+				glfwSetWindowShouldClose(window, true);
+
+			if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS && !u_hold)
+			{
+				u_hold = true;
+				dhUndo(&dh);
+			}
+			if (glfwGetKey(window, GLFW_KEY_U) != GLFW_PRESS)
+				u_hold = false;
+
+			if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS && !c_hold)
+			{
+				c_hold = true;
+
+				struct Operation op = {
+					.op = OT_CLEAR, .color = (vec4s){0, 0, 0, 0}};
+				dhAddOp(&dh, op);
+			}
+			if (glfwGetKey(window, GLFW_KEY_C) != GLFW_PRESS)
+				c_hold = false;
+
+			if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS)
+				preferences.mode = DM_BRUSH;
+			if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+				preferences.mode = DM_ERASE;
+
+			if (vtLen(dh.operations) > 0)
+			{
+				if (dh.operations[vtLen(dh.operations) - 1].op == OT_STROKE &&
+					glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS)
+				{
+					dh.operations[vtLen(dh.operations) - 1] = fixOperation(
+						dh.operations[vtLen(dh.operations) - 1]);
+				}
+			}
+
+			if (newCursor.down == true && oldCursor.down == false)
+			{
+				if (preferences.mode == DM_BRUSH)
+				{
+					currOp.op = OT_STROKE;
+					currOp.stroke_width = preferences.brush.radius;
+					currOp.color = preferences.brush.color;
+				}
+				else if (preferences.mode == DM_ERASE)
+				{
+					currOp.op = OT_ERASER;
+					currOp.stroke_width = preferences.eraserRadius;
+				}
+
+				currOp.points = vtInit(vec2s, 0);
+				vec2s newPoint = {newCursor.pos.x / SCREEN_WIDTH,
+					1 - (newCursor.pos.y / SCREEN_HEIGHT)};
+				vtPush(&currOp.points, newPoint);
+			}
+			if (newCursor.down == true && oldCursor.down == true)
+			{
+				vec2s newPoint = {newCursor.pos.x / SCREEN_WIDTH,
+					1 - (newCursor.pos.y / SCREEN_HEIGHT)};
+				vtPush(&currOp.points, newPoint);
+			}
+			if (newCursor.down == false && oldCursor.down == true)
+			{
+				dhAddOp(&dh, currOp);
+				currOp = (struct Operation){.op = OT_NULL};
+			}
+
+			oldCursor = newCursor;
+		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -208,7 +303,7 @@ int main()
 		vec2s cursorPos = {
 			newCursor.pos.x / SCREEN_WIDTH, 1 - (newCursor.pos.y / SCREEN_HEIGHT)};
 
-		if (!preferences.isEraser)
+		if (preferences.mode == DM_BRUSH)
 		{
 			struct Operation op = {
 				.op = OT_STROKE,
@@ -220,7 +315,7 @@ int main()
 			vtPush(&op.points, cursorPos);
 			opRender(op, 0, false);
 		}
-		else
+		else if (preferences.mode == DM_ERASE)
 		{
 			struct Operation op = {
 				.op = OT_HOLLOW_DOT,
@@ -231,6 +326,25 @@ int main()
 
 			vtPush(&op.points, cursorPos);
 			opRender(op, 0, false);
+		}
+		else if (preferences.mode == DM_CMD)
+		{
+			nk_glfw3_new_frame();
+
+			if (nk_begin(ctx, "",
+				    nk_rect(0, SCREEN_HEIGHT - 30, SCREEN_WIDTH, SCREEN_HEIGHT),
+				    NK_WINDOW_NO_SCROLLBAR))
+			{
+				nk_layout_row_dynamic(ctx, 30, 1);
+				nk_edit_focus(ctx, NK_EDIT_ALWAYS_INSERT_MODE);
+				nk_edit_string_zero_terminated(ctx, NK_EDIT_FIELD, cmdBuffer,
+					sizeof(cmdBuffer) - 1, nk_filter_default);
+			}
+			nk_end(ctx);
+
+			nk_glfw3_render(NK_ANTI_ALIASING_OFF, 512 * 1024, 128 * 1024);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glEnable(GL_BLEND);
 		}
 
 		glfwSwapBuffers(window);

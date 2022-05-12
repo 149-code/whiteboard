@@ -1,2 +1,2 @@
 all:
-	cc main.c tablet.c operation.c -lglfw -lglew -framework OpenGl -framework ApplicationServices -fsanitize=address
+	cc main.c operation.c cmd.c -lglfw -lglew -framework OpenGl -framework ApplicationServices
