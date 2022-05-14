@@ -305,3 +305,62 @@ void dhUndo(struct DrawHistory* dh)
 		opDelete(op);
 	}
 }
+
+/*
+DrawHistory
+Header(16): [MagicNumber(u32), Version(u32), Width(u32), Height(u32)]
+Image(Width * Height * rgba)
+NumOps(u32)
+Op(NumOps)
+
+Op
+Header(4): [OpType(u32)]
+Radius(u32)
+Color(rgba)
+
+DataSize(u32)
+Data(u8 * DataSize)
+*/
+
+void opSerialise(struct Operation op, FILE* fp)
+{
+	fwrite(&op.op, sizeof(int), 1, fp);
+	fwrite(&op.stroke_width, sizeof(int), 1, fp);
+	fwrite(&op.color, sizeof(float), 4, fp);
+	vtSerialise(op.points, fp);
+}
+
+
+void dhSerialise(struct DrawHistory dh, FILE* fp)
+{
+	unsigned int header[4] = {0x12345678, VERSION, SCREEN_WIDTH, SCREEN_HEIGHT};
+	unsigned char* data = malloc(4 * SCREEN_WIDTH * SCREEN_HEIGHT);
+
+	glBindTexture(GL_TEXTURE_2D, dh.tex);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+	fwrite(header, sizeof(int), 4, fp);
+	fwrite(data, sizeof(char), 4 * SCREEN_WIDTH * SCREEN_HEIGHT, fp);
+
+	int numOps = vtLen(dh.operations);
+	fwrite(&numOps, sizeof(int), 1, fp);
+
+	for (int i = 0; i < numOps; i++)
+		opSerialise(dh.operations[i], fp);
+}
+
+struct Operation opDeserialise(FILE* fp)
+{
+	struct Operation ret;
+
+	fread(&ret.op, sizeof(int), 1, fp);
+	fread(&ret.stroke_width, sizeof(int), 1, fp);
+	fread(&ret.color, sizeof(float), 4, fp);
+
+	if (ret.op == OT_TEXT)
+		ret.text = vtDeserialise(char, fp);
+	else
+		ret.points = vtDeserialise(vec2s, fp);
+
+	return ret;
+}

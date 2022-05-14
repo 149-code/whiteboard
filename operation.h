@@ -18,11 +18,11 @@ static struct Shaders shaderStore;
 
 struct Operation
 {
+	int op;
 	union {
 		vtVec(vec2s) points;
 		vtVec(char) text;
 	};
-	int op;
 	float stroke_width;
 	vec4s color;
 };
@@ -58,3 +58,8 @@ struct DrawHistory dhInit();
 void dhAddOp(struct DrawHistory* dh, struct Operation op);
 void dhUndo(struct DrawHistory* dh);
 void dhRender(struct DrawHistory dh);
+
+void dhSerialise(struct DrawHistory dh, FILE* fp);
+void dhDeserialiseInit(FILE* fp);
+void opSerialise(struct Operation op, FILE* fp);
+struct Operation opDeserialise(FILE* fp);
