@@ -6,6 +6,7 @@
 #include <cglm/struct.h>
 
 #include "config.h"
+#include "operation.h"
 
 int parseHex(char c)
 {
@@ -41,7 +42,7 @@ bool parseColor(char* str, vec4s* out)
 	return true;
 }
 
-char* execCommand(char* cmd, struct Preferences* preferences)
+char* execCommand(char* cmd, struct Preferences* preferences, struct DrawHistory* dh)
 {
 	for (int i = 0; i < strlen(cmd); i++)
 		cmd[i] = tolower(cmd[i]);
@@ -79,6 +80,37 @@ char* execCommand(char* cmd, struct Preferences* preferences)
 		}
 		else
 			return "Usage: 'set' color | size";
+
+		return NULL;
+	}
+	else if (strcmp(token, "w") == 0)
+	{
+		char* filename = strsep(&cmd, " ");
+
+		FILE* fp = fopen(filename, "wb");
+		if (fp == NULL)
+			return "Failed to read file";
+
+		dhSerialise(*dh, fp);
+		fclose(fp);
+
+		return NULL;
+	}
+	else if (strcmp(token, "r") == 0)
+	{
+		char* filename = strsep(&cmd, " ");
+
+		FILE* fp = fopen(filename, "rb");
+		if (fp == NULL)
+			return "Failed to read file";
+
+		int ret = dhLoadDeserialise(fp, dh);
+		if (ret == -1)
+			return "Unrecognised file format";
+		else if (ret == -2)
+			return "Incompatible screen size";
+
+		fclose(fp);
 
 		return NULL;
 	}

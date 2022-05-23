@@ -150,7 +150,7 @@ int main()
 	ctx->style.window.padding.x = 0;
 	ctx->style.window.padding.y = 0;
 
-	struct DrawHistory dh = dhInit();
+	struct DrawHistory dh = dhInit(NULL, NULL);
 	struct Cursor oldCursor = getCursorInfo(window);
 	struct Preferences preferences = {
 		.color = (vec4s) {1.0, 0.8, 0.8, 1},
@@ -178,7 +178,7 @@ int main()
 
 			if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
 			{
-				char* res = execCommand(cmdBuffer, &preferences);
+				char* res = execCommand(cmdBuffer, &preferences, &dh);
 
 				if (res)
 					strcpy(cmdBuffer, res);

@@ -54,12 +54,12 @@ void opRender(struct Operation op, GLuint fbo, bool toTex);
 void opDelete(struct Operation op);
 struct Operation fixOperation(struct Operation op);
 
-struct DrawHistory dhInit();
+struct DrawHistory dhInit(vtVec(struct Operation) ops, unsigned char* image);
 void dhAddOp(struct DrawHistory* dh, struct Operation op);
 void dhUndo(struct DrawHistory* dh);
 void dhRender(struct DrawHistory dh);
 
 void dhSerialise(struct DrawHistory dh, FILE* fp);
-void dhDeserialiseInit(FILE* fp);
+int dhLoadDeserialise(FILE* fp, struct DrawHistory* dh);
 void opSerialise(struct Operation op, FILE* fp);
 struct Operation opDeserialise(FILE* fp);

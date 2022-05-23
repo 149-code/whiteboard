@@ -224,7 +224,6 @@ void loadShaders()
 struct DrawHistory dhInit()
 {
 	struct DrawHistory ret;
-
 	ret.operations = vtInit(struct Operation, 0);
 
 	glGenFramebuffers(1, &ret.fbo);
@@ -363,4 +362,33 @@ struct Operation opDeserialise(FILE* fp)
 		ret.points = vtDeserialise(vec2s, fp);
 
 	return ret;
+}
+
+int dhLoadDeserialise(FILE* fp, struct DrawHistory* dh)
+{
+	unsigned int header[4];
+	fread(header, sizeof(int), 4, fp);
+
+	if (header[0] != 0x12345678)
+		return -1;
+	if (header[2] != SCREEN_WIDTH || header[3] != SCREEN_HEIGHT)
+		return -2;
+
+	unsigned char* image = malloc(4 * header[2] * header[3]);
+	fread(image, sizeof(char), 4 * SCREEN_WIDTH * SCREEN_HEIGHT, fp);
+	glBindTexture(GL_TEXTURE_2D, dh->tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGBA,
+		GL_UNSIGNED_BYTE, image);
+
+	int numOps;
+	fread(&numOps, sizeof(int), 1, fp);
+
+	if (dh->operations)
+		vtFree(dh->operations);
+
+	dh->operations = vtInit(struct Operation, numOps);
+	for (int i = 0; i < numOps; i++)
+		dh->operations[i] = opDeserialise(fp);
+
+	return 0;
 }
